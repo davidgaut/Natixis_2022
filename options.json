@@ -1,0 +1,23 @@
+
+
+{   
+
+
+    "MakeData"     : true,
+    "Test"         : false,
+    "Cross"        : true,   
+    "Additional"   : false,
+    "cv_splits"    : 5,
+
+    "var_to_lag"   : ["NLV","LS"],
+    "lag1"         : 1,
+    "lag2"         : 12,
+    "lag_step"     : 1,
+    "name"         : "CFM",
+    "default_param": "{'boosting' :'gbdt', 'objective': 'mse', 'learning_rate':0.02, 'early_stopping_rounds':150, 'zero_as_missing' : True, 'force_col_wise':True, 'n_jobs': -1, 'verbose': -1,}",
+
+    "folder_path"  : "/home/davidg/Codes/Python_Codes/Projects/Hackatons/CFM_data_challenge",
+    "save_inputs"  : true
+    
+}
+
