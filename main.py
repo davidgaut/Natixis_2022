@@ -2,6 +2,7 @@
 import sys, os
 sys.path.append('/home/davidg/Codes/Python_Codes/Projects/Hackatons/CFM_data_challenge')
 import joblib
+import json
 from hypertune import objective_cv
 from typing import Tuple
 import optuna
@@ -23,15 +24,12 @@ from sklearn.metrics import mean_squared_error
 
 def loss(y_true, y_pred):
     return np.sqrt(mean_squared_error(y_true, y_pred))
-def loss_for_lgbm(
-    preds: np.ndarray, data: Dataset, threshold: float=0.5,
-) -> Tuple[str, float, bool]:
+def loss_for_lgbm(preds: np.ndarray, data: Dataset, threshold: float=0.5,): #-> Tuple[str, float, bool]:
     """Calculate Binary Accuracy"""
     y_true = data.get_label()
     acc = np.sqrt(mean_squared_error(y_true, preds))
     return 'custom_loss', acc, False
 
-import json
 with open('options.json') as f:
     options = json.load(f)
     print(json.dumps(options, indent=4, sort_keys=True))
