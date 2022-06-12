@@ -16,6 +16,7 @@ import pandas as pd
 import seaborn as sns
 import numpy as np
 
+from joblib import Parallel, delayed
 from datetime import datetime
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.multioutput import MultiOutputRegressor
@@ -72,104 +73,55 @@ print(np.shape(ypred))
 print('Error with multiouptut linear regression is',loss(ypred,y_test))
 
 # %% Gradient Boosting
-
-best_params_ = dict()
-for i in range(n_features):
-    y_train_      = y_train.T[i].reshape((-1,1))
-
-    train_dataset = Dataset(X_train, label=y_train_, free_raw_data=False, )
-
-    # options['default_param'] = "{'boosting' :'gbdt', 'objective': 'mse', 'learning_rate':0.02, 'early_stopping_rounds':150, 'zero_as_missing' : True, 'force_col_wise':True, 'verbose': -1,}"
-
-    X_idx      = range(0,X_train.shape[0])
-    objective_ = lambda trial: objective_cv(trial,train_dataset,TimeSeriesSplit(n_splits=options['cv_splits']).split(X_idx),eval(options['default_param']),metrics=loss_for_lgbm)
-    if new:
-        study = optuna.create_study(direction="minimize")
-    else:
-        study = joblib.load('./predictors/lgbm_{:}.pkl'.format(i))
-
-    study.optimize(objective_, n_trials=20, timeout=10,)
-
-    # pruned_trials   = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
-
-    if verbose:
-        print("Study statistics: ")
-        print("  Number of finished trials: ", len(study.trials))
-        # print("  Number of pruned trials: ",   len(pruned_trials))
-        # print("  Number of complete trials: ", len(complete_trials))
-
-        print("Best trial:")
-        trial = study.best_trial
-
-        print("  Value: ", trial.value)
-
-        print("  Params: ")
-        for key, value in trial.params.items():
-            print("    {}: {}".format(key, value))
-
-    best_params_.update({i:trial.params})
-    joblib.dump(study,'./predictors/lgbm_{:}.pkl'.format(i))
-
-def lgb_tune(X_train,y_train,options,verbose=False):
+def lgb_multioutput_tune(id_,X_train:pd.DataFrame,y_train:np.array,options:dict,verbose=False):
+    '''
+    To tune lgb with multitarget.
+     - id_ (str): target id
+     - X_train (pd.DataFrame): features
+     - y_train (np.array): target
+     - options (dict): estimation options
+     - verbose (bool): to display results
+    '''
     train_dataset = Dataset(X_train, label=y_train, free_raw_data=False, )
+    X_idx         = range(0,X_train.shape[0])
+    objective_    = lambda trial: objective_cv(trial,train_dataset,TimeSeriesSplit(n_splits=options['cv_splits']).split(X_idx),eval(options['default_param']),metrics=loss_for_lgbm)
 
-    # options['default_param'] = "{'boosting' :'gbdt', 'objective': 'mse', 'learning_rate':0.02, 'early_stopping_rounds':150, 'zero_as_missing' : True, 'force_col_wise':True, 'verbose': -1,}"
-
-    X_idx      = range(0,X_train.shape[0])
-    objective_ = lambda trial: objective_cv(trial,train_dataset,TimeSeriesSplit(n_splits=options['cv_splits']).split(X_idx),eval(options['default_param']),metrics=loss_for_lgbm)
     if new:
         study = optuna.create_study(direction="minimize")
     else:
-        study = joblib.load('./predictors/lgbm_{:}.pkl'.format(i))
+        study = joblib.load('./predictors/lgbm_{:}.pkl'.format(id_))
 
     study.optimize(objective_, n_trials=20, timeout=10,)
-
-    # pruned_trials   = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
-
+    trial = study.best_trial
     if verbose:
         print("Study statistics: ")
         print("  Number of finished trials: ", len(study.trials))
-        # print("  Number of pruned trials: ",   len(pruned_trials))
-        # print("  Number of complete trials: ", len(complete_trials))
-
         print("Best trial:")
-        trial = study.best_trial
-
         print("  Value: ", trial.value)
-
         print("  Params: ")
         for key, value in trial.params.items():
             print("    {}: {}".format(key, value))
 
-    best_params_ = {i:trial.params}
     joblib.dump(study,'./predictors/lgbm_{:}.pkl'.format(i))
+    return {id_:trial.params}
 
-[lgb_tune(X_train,y_train.T[i].reshape((-1,1)),options) for i in range(n_features)]
 
-best_params_ = dict()
-for i in range(n_features):
-    y_train_      = y_train.T[i].reshape((-1,1))
-
-# %% Prediction
-embeddings_test = pd.read_csv('x_test_pf4T2aK.csv').iloc[:,:max_feat]
-
-X_test = embeddings_test.values
-if False:
-    y_test = regr.predict(X_test)
-    print(np.shape(y_test))
-    prediction = pd.DataFrame(y_test,columns=variables)
-
-# Best param set
-# Refit
-targets_pred = pd.DataFrame(columns=variables)
-for i in range(n_features):
-    optim_param = best_params_[i]
+def lgb_multioutput_predict(id_,best_params_,X_test,X_train:pd.DataFrame,y_train,options:dict):
+    '''
+    To tune lgb with multitarget.
+     - id_ (str): target id
+     - X_train (pd.DataFrame): features
+     - y_train (np.array): target
+     - options (dict): estimation options
+     - verbose (bool): to display results
+    '''
+    optim_param = best_params_[id_]
     optim_param.update(eval(options['default_param']))
     optim_param['num_boost_round'] = 10000
-    y_train_ = y_train.T[i].reshape((-1,1))
-        
+    
+    train_dataset = Dataset(X_train, label=y_train, free_raw_data=False, )
+    
+    X_idx   = range(0,X_train.shape[0])
     TS_fold = TimeSeriesSplit(n_splits=options['cv_splits']).split(X_idx)
     cv_results  = cv(optim_param, train_dataset, folds=TS_fold, 
             num_boost_round=10000, \
@@ -182,17 +134,42 @@ for i in range(n_features):
     optim_param['num_boost_round']       = round(1.0*np.max((np.argmin(cv_results['custom_loss-mean']),1))) 
     optim_param['early_stopping_rounds'] = None
 
-    final_model  = train(optim_param, train_dataset,)
-    targets_pred.loc[:,variables[i]] = final_model.predict(X_test)
-    
-prediction = targets_pred
+    final_model = train(optim_param, train_dataset,)
+    y_pred      = final_model.predict(X_test)
+    return {id_:y_pred}
+
+lgb_tune_loop = lambda ii: lgb_multioutput_tune(variables[ii],X_train,y_train.T[ii].reshape((-1,1)),options)
+results       = Parallel(n_jobs=2)(delayed(lgb_tune_loop)(ii) for ii in range(n_features))
+
+best_params_ = dict()
+for d in results:
+    best_params_.update(d) 
+
+# %% Prediction
+embeddings_test = pd.read_csv('x_test_pf4T2aK.csv').iloc[:,:max_feat]
+
+X_test = embeddings_test.values
+if False:
+    y_test = regr.predict(X_test)
+    print(np.shape(y_test))
+    prediction = pd.DataFrame(y_test,columns=variables)
+
+
+lgb_predict_loop = lambda ii: lgb_multioutput_predict(variables[ii],best_params_,X_test,X_train,y_train.T[ii].reshape((-1,1)),options)
+predictions      = Parallel(n_jobs=2)(delayed(lgb_predict_loop)(ii) for ii in range(n_features))
+
+all_pred = dict()
+for d in predictions:
+    all_pred.update(d) 
+
+y_pred = pd.DataFrame(all_pred)
 
 # %% [markdown] 
-# Optimization Plots
-# %%
-plot_optimization_history(study)
-# %%
-plot_parallel_coordinate(study)
+# # Optimization Plots
+# # %%
+# plot_optimization_history(study)
+# # %%
+# plot_parallel_coordinate(study)
 
 
 # %%
