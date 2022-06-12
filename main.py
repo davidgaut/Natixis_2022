@@ -69,7 +69,6 @@ print('Error targeting mean is',loss(y_pred_mean,y_test))
 # %% Simple Multi Output regression
 regr  = MultiOutputRegressor(Ridge(random_state=123)).fit(X_train,y_train)
 ypred = regr.predict(X_test)
-print(np.shape(ypred))
 print('Error with multiouptut linear regression is',loss(ypred,y_test))
 
 # %% Gradient Boosting
@@ -77,7 +76,7 @@ def lgb_multioutput_tune(id_,X_train:pd.DataFrame,y_train:np.array,options:dict,
     '''
     To tune lgb with multitarget.
      - id_ (str): target id
-     - X_train (pd.DataFrame): features
+     - X_train (pd.DataFrame): train features
      - y_train (np.array): target
      - options (dict): estimation options
      - verbose (bool): to display results
@@ -102,18 +101,17 @@ def lgb_multioutput_tune(id_,X_train:pd.DataFrame,y_train:np.array,options:dict,
         for key, value in trial.params.items():
             print("    {}: {}".format(key, value))
 
-    joblib.dump(study,'./predictors/lgbm_{:}.pkl'.format(i))
+    joblib.dump(study,'./predictors/lgbm_{:}.pkl'.format(id_))
     return {id_:trial.params}
-
 
 def lgb_multioutput_predict(id_,best_params_,X_test,X_train:pd.DataFrame,y_train,options:dict):
     '''
     To tune lgb with multitarget.
      - id_ (str): target id
-     - X_train (pd.DataFrame): features
+     - X_test (pd.DataFrame): test features
+     - X_train (pd.DataFrame): train features
      - y_train (np.array): target
      - options (dict): estimation options
-     - verbose (bool): to display results
     '''
     optim_param = best_params_[id_]
     optim_param.update(eval(options['default_param']))
@@ -154,7 +152,6 @@ if False:
     print(np.shape(y_test))
     prediction = pd.DataFrame(y_test,columns=variables)
 
-
 lgb_predict_loop = lambda ii: lgb_multioutput_predict(variables[ii],best_params_,X_test,X_train,y_train.T[ii].reshape((-1,1)),options)
 predictions      = Parallel(n_jobs=2)(delayed(lgb_predict_loop)(ii) for ii in range(n_features))
 
@@ -163,6 +160,7 @@ for d in predictions:
     all_pred.update(d) 
 
 y_pred = pd.DataFrame(all_pred)
+print('Error with multiouptut linear regression is',loss(ypred,y_test))
 
 # %% [markdown] 
 # # Optimization Plots
@@ -171,10 +169,9 @@ y_pred = pd.DataFrame(all_pred)
 # # %%
 # plot_parallel_coordinate(study)
 
-
 # %%
 id_ = datetime.strftime(datetime.now(),'%Y-%b-%d-%m-%s')
 if True:
     print('Saving file.')
-    prediction.to_csv('./predictions/prediction_linear_'+id_)
+    y_pred.to_csv('./predictions/prediction_linear_'+id_)
 # %%
