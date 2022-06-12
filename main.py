@@ -22,13 +22,16 @@ from sklearn.multioutput import MultiOutputRegressor
 from sklearn.model_selection import TimeSeriesSplit, train_test_split
 from sklearn.metrics import mean_squared_error
 
+import matplotlib as mpl
+mpl.style.use('seaborn')
+
 def loss(y_true, y_pred):
     return np.sqrt(mean_squared_error(y_true, y_pred))
-def loss_for_lgbm(preds: np.ndarray, data: Dataset, threshold: float=0.5,): #-> Tuple[str, float, bool]:
+def loss_for_lgbm(preds: np.ndarray, data: Dataset):
     """Calculate Binary Accuracy"""
     y_true = data.get_label()
-    acc = np.sqrt(mean_squared_error(y_true, preds))
-    return 'custom_loss', acc, False
+    loss   = np.sqrt(mean_squared_error(y_true, preds))
+    return 'custom_loss', loss, False
 
 with open('options.json') as f:
     options = json.load(f)
@@ -48,12 +51,11 @@ else:
 embeddings = pd.read_csv('x_train_ACFqOMF.csv').iloc[:,:max_feat]
 targets    = pd.read_csv('y_train_HNMbC27.csv',index_col=0)
 variables  = targets.columns.to_list()
-
 n_features = np.shape(targets)[1]
 
 #%% Plot
-sns.lineplot(data=targets,x=targets.index,y=targets.Diff_EURUSD_2w)
-#%% Linear Model
+sns.lineplot(data=targets,)#x=targets.index,y=targets.columns)
+#%% Targets and Splits
 X = embeddings.values
 y = targets.values
 
@@ -62,20 +64,22 @@ X_train,X_test,y_train,y_test = train_test_split(X,y)
 # %% Basic Test
 means = np.mean(y_train,axis=0)
 y_pred_mean = 0*y_test + means
-print('Error is',loss(y_pred_mean,y_test))
+print('Error targeting mean is',loss(y_pred_mean,y_test))
 # %% Simple Multi Output regression
 regr  = MultiOutputRegressor(Ridge(random_state=123)).fit(X_train,y_train)
 ypred = regr.predict(X_test)
 print(np.shape(ypred))
-print('Error is',loss(ypred,y_test))
+print('Error with multiouptut linear regression is',loss(ypred,y_test))
 
 # %% Gradient Boosting
+
 best_params_ = dict()
 for i in range(n_features):
     y_train_      = y_train.T[i].reshape((-1,1))
+
     train_dataset = Dataset(X_train, label=y_train_, free_raw_data=False, )
 
-    options['default_param'] = "{'boosting' :'gbdt', 'objective': 'mse', 'learning_rate':0.02, 'early_stopping_rounds':150, 'zero_as_missing' : True, 'force_col_wise':True, 'verbose': -1,}"
+    # options['default_param'] = "{'boosting' :'gbdt', 'objective': 'mse', 'learning_rate':0.02, 'early_stopping_rounds':150, 'zero_as_missing' : True, 'force_col_wise':True, 'verbose': -1,}"
 
     X_idx      = range(0,X_train.shape[0])
     objective_ = lambda trial: objective_cv(trial,train_dataset,TimeSeriesSplit(n_splits=options['cv_splits']).split(X_idx),eval(options['default_param']),metrics=loss_for_lgbm)
@@ -84,27 +88,69 @@ for i in range(n_features):
     else:
         study = joblib.load('./predictors/lgbm_{:}.pkl'.format(i))
 
-    study.optimize(objective_, n_trials=20, timeout=600, n_jobs=-1)
+    study.optimize(objective_, n_trials=20, timeout=10,)
 
-    pruned_trials   = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-    complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    # pruned_trials   = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-    print("Study statistics: ")
-    print("  Number of finished trials: ", len(study.trials))
-    print("  Number of pruned trials: ",   len(pruned_trials))
-    print("  Number of complete trials: ", len(complete_trials))
+    if verbose:
+        print("Study statistics: ")
+        print("  Number of finished trials: ", len(study.trials))
+        # print("  Number of pruned trials: ",   len(pruned_trials))
+        # print("  Number of complete trials: ", len(complete_trials))
 
-    print("Best trial:")
-    trial = study.best_trial
+        print("Best trial:")
+        trial = study.best_trial
 
-    print("  Value: ", trial.value)
+        print("  Value: ", trial.value)
 
-    print("  Params: ")
-    for key, value in trial.params.items():
-        print("    {}: {}".format(key, value))
+        print("  Params: ")
+        for key, value in trial.params.items():
+            print("    {}: {}".format(key, value))
 
     best_params_.update({i:trial.params})
     joblib.dump(study,'./predictors/lgbm_{:}.pkl'.format(i))
+
+def lgb_tune(X_train,y_train,options,verbose=False):
+    train_dataset = Dataset(X_train, label=y_train, free_raw_data=False, )
+
+    # options['default_param'] = "{'boosting' :'gbdt', 'objective': 'mse', 'learning_rate':0.02, 'early_stopping_rounds':150, 'zero_as_missing' : True, 'force_col_wise':True, 'verbose': -1,}"
+
+    X_idx      = range(0,X_train.shape[0])
+    objective_ = lambda trial: objective_cv(trial,train_dataset,TimeSeriesSplit(n_splits=options['cv_splits']).split(X_idx),eval(options['default_param']),metrics=loss_for_lgbm)
+    if new:
+        study = optuna.create_study(direction="minimize")
+    else:
+        study = joblib.load('./predictors/lgbm_{:}.pkl'.format(i))
+
+    study.optimize(objective_, n_trials=20, timeout=10,)
+
+    # pruned_trials   = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    # complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+
+    if verbose:
+        print("Study statistics: ")
+        print("  Number of finished trials: ", len(study.trials))
+        # print("  Number of pruned trials: ",   len(pruned_trials))
+        # print("  Number of complete trials: ", len(complete_trials))
+
+        print("Best trial:")
+        trial = study.best_trial
+
+        print("  Value: ", trial.value)
+
+        print("  Params: ")
+        for key, value in trial.params.items():
+            print("    {}: {}".format(key, value))
+
+    best_params_ = {i:trial.params}
+    joblib.dump(study,'./predictors/lgbm_{:}.pkl'.format(i))
+
+[lgb_tune(X_train,y_train.T[i].reshape((-1,1)),options) for i in range(n_features)]
+
+best_params_ = dict()
+for i in range(n_features):
+    y_train_      = y_train.T[i].reshape((-1,1))
 
 # %% Prediction
 embeddings_test = pd.read_csv('x_test_pf4T2aK.csv').iloc[:,:max_feat]
@@ -133,7 +179,7 @@ for i in range(n_features):
             early_stopping_rounds=1, verbose_eval=200, 
             eval_train_metric=False, return_cvbooster=False)
 
-    optim_param['num_boost_round']       = round(1.1*np.max((np.argmin(cv_results['custom_loss-mean']),1))) 
+    optim_param['num_boost_round']       = round(1.0*np.max((np.argmin(cv_results['custom_loss-mean']),1))) 
     optim_param['early_stopping_rounds'] = None
 
     final_model  = train(optim_param, train_dataset,)
