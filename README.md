@@ -1,4 +1,4 @@
-# Natixis_2022: Central Bankers' Speeches
+# Natixis 2022: Central Bankers' Speeches
 
 This folder contains the code written for the Natixis 2022 data challenge. 
 
